@@ -11,6 +11,7 @@ set(PROJECT_DESCRIPTION "QuickJS is a small and embeddable Javascript engine.")
 set(PROJECT_HOMEPAGE_URL "https://bellard.org/quickjs")
 set(CMAKE_C_EXTENSIONS 1)
 set(CMAKE_C_STANDARD 99)
+set(CMAKE_UNITY_BUILD 0)
 set(QJS_DEPENDS qjsc)
 
 if(CMAKE_HOST_WIN32)
@@ -71,14 +72,15 @@ endif()
 find_package(Threads)
 
 function(quickjs_compile target)
-  add_library(${target} STATIC
-    cutils.c
-    dtoa.c
-    libregexp.c
-    libunicode.c
-    quickjs.c
-    quickjs-libc.c
-  )
+  set(SOURCES cutils.c libregexp.c libunicode.c quickjs.c quickjs-libc.c)
+
+  foreach(arg dtoa.c libbf.c)
+    if(EXISTS ${CMAKE_CURRENT_LIST_DIR}/${arg})
+      list(APPEND SOURCES ${arg})
+    endif()
+  endforeach()
+
+  add_library(${target} STATIC ${SOURCES})
   set_target_properties(${target} PROPERTIES
     DEFINE_SYMBOL CONFIG_VERSION="${PROJECT_VERSION}"
     INTERPROCEDURAL_OPTIMIZATION "${ARGN}"
@@ -129,12 +131,18 @@ endif()
 if(NOT QUICKJS_CROSSCOMPILING)
   quickjs_compile(quickjs)
   list(APPEND INSTALL_TARGETS quickjs qjs)
-  add_custom_command(DEPENDS ${QJS_DEPENDS}
-    OUTPUT ${CMAKE_CURRENT_LIST_DIR}/repl.c
-    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-    COMMAND ${QJSC_EXECUTABLE} -m -o repl.c -c repl.js
-  )
-  add_executable(qjs qjs.c repl.c)
+  set(SOURCES qjs.c)
+  foreach(arg repl qjscalc)
+    if(EXISTS ${CMAKE_CURRENT_LIST_DIR}/${arg}.js)
+      add_custom_command(DEPENDS ${QJS_DEPENDS}
+        OUTPUT ${CMAKE_CURRENT_LIST_DIR}/${arg}.c
+        WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+        COMMAND ${QJSC_EXECUTABLE} -m -o ${arg}.c -c ${arg}.js
+      )
+      list(APPEND SOURCES ${arg}.c)
+    endif()
+  endforeach()
+  add_executable(qjs ${SOURCES})
   set_target_properties(qjs PROPERTIES
     INTERPROCEDURAL_OPTIMIZATION "${CONFIG_LTO}"
   )
